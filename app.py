@@ -531,9 +531,9 @@ def page_teams():
 
 
 def main():
-    st.set_page_config(page_title="AI Sana Challenge Hub", page_icon="🧩", layout="wide")
+    st.set_page_config(page_title="Busyness", page_icon="🧩", layout="wide")
     init_db()
-    st.title("🧩 AI Sana Challenge Hub")
+    st.title("🧩 Busyness")
     st.caption("Полезнее задача — выше рейтинг. Команды выбирают задачи сами, бизнес выбирает команды вручную.")
     page = st.radio("Раздел", ["Новая задача", "Каталог", "Отклики", "Команды"], horizontal=True,
                     label_visibility="collapsed")
