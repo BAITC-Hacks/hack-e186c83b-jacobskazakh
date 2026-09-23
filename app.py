@@ -46,6 +46,23 @@ QUESTION_FIELDS = {
     "interaction_mode": "Формат взаимодействия",
 }
 FALLBACK_QUESTION_FIELDS = ("need", "users", "data", "deliverables", "success_criteria")
+CARD_INPUTS = [
+    ("title", "Название задачи *", False),
+    ("company", "Компания / владелец", False),
+    ("industry", "Отрасль или тема", False),
+    ("goal", "Контекст: что происходит сейчас", True),
+    ("need", "Потребность: что нужно изменить", True),
+    ("users", "Для кого создаётся решение", True),
+    ("data", "Данные и доступные материалы", True),
+    ("restrictions", "Ограничения: сроки, технологии, доступы", True),
+    ("deliverables", "Ожидаемый результат", True),
+    ("success_criteria", "Критерии успеха: как измерить результат", True),
+    ("contact", "Контакт представителя бизнеса", False),
+    ("interaction_mode", "Формат взаимодействия и обратной связи", False),
+    ("skills", "Навыки или технологии", False),
+    ("timeline", "Сроки", False),
+    ("budget", "Бюджет или доступные ресурсы", False),
+]
 
 
 def db():
@@ -323,6 +340,7 @@ def demo_data():
     return [
         {
             "title": "Сократить время обработки заказов", "company": "Sana Market",
+            "description": "Вручную сверяем заказы с остатками и задерживаем обработку. Есть CSV за три месяца; хотим сократить время минимум на 15%.",
             "industry": "Розничная торговля", "goal": "Сейчас сотрудники вручную сверяют заказы и остатки.",
             "need": "Нужно уменьшить время обработки заказов в пиковые часы.",
             "users": "Сотрудники склада и менеджеры интернет-магазина.",
@@ -335,6 +353,7 @@ def demo_data():
         },
         {
             "title": "Понятнее показывать статус доставки", "company": "Qadam Logistics",
+            "description": "Клиенты звонят узнать статус доставки. Есть обезличенные статусы и временные метки; хотим страницу отслеживания.",
             "industry": "Логистика", "goal": "Клиенты часто уточняют статус доставки по телефону.",
             "need": "Хотим сократить число повторных вопросов о доставке.",
             "users": "Покупатели небольших интернет-магазинов.",
@@ -346,6 +365,7 @@ def demo_data():
         },
         {
             "title": "Снизить списание продуктов", "company": "Dala Foods",
+            "description": "Регулярно списываем продукты в кафе. Можем согласовать передачу примера таблицы заказов, но формат пилота пока не определён.",
             "industry": "Производство", "goal": "В нескольких точках регулярно списываются продукты.",
             "need": "Нужно раньше замечать риск избыточного заказа.",
             "users": "Администраторы кафе.", "data": "Пример таблицы заказов доступен после согласования.",
@@ -355,6 +375,7 @@ def demo_data():
         },
         {
             "title": "Помочь новым клиентам освоить сервис", "company": "Ornek Digital",
+            "description": "Новые клиенты не находят нужные функции. Хотим проверить короткое знакомство с сервисом на пяти пользователях.",
             "industry": "Цифровые сервисы", "goal": "", "need": "Новые клиенты не всегда находят нужные функции.",
             "users": "", "data": "", "restrictions": "Без доступа к персональным данным.",
             "deliverables": "Кликабельный сценарий знакомства с сервисом.",
@@ -364,6 +385,7 @@ def demo_data():
         },
         {
             "title": "Собрать идеи для доступной городской среды", "company": "Open Qala",
+            "description": "Хотим собрать наблюдения жителей о неудобных маршрутах по району.",
             "industry": "Городская среда", "goal": "", "need": "Хотим узнать, какие участки маршрута требуют улучшения.",
             "users": "Жители района.", "data": "", "restrictions": "",
             "deliverables": "Карта наблюдений и приоритизированный список проблем.",
@@ -404,6 +426,10 @@ def seed_demo_data():
             row = conn.execute("SELECT id FROM challenges WHERE demo_key=?", (key,)).fetchone()
             if row:
                 challenge_id = row["id"]
+                conn.execute(
+                    "UPDATE challenges SET description=? WHERE id=? AND TRIM(description)=''",
+                    (card["description"], challenge_id),
+                )
             else:
                 score, _, _, _ = score_card(card)
                 cur = conn.execute("""
@@ -413,7 +439,7 @@ def seed_demo_data():
                         success_criteria,contact,interaction_mode,demo_key
                     ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """, (
-                    card["title"], card["company"], card["goal"], card["goal"],
+                    card["title"], card["company"], card["description"], card["goal"],
                     card["deliverables"], card["skills"], card["timeline"], card["budget"],
                     "published", score, now, card["industry"], card["need"], card["users"],
                     card["data"], card["restrictions"], card["success_criteria"],
@@ -435,25 +461,20 @@ def seed_demo_data():
     return inserted
 
 
-def _card_values():
-    return {
-        "title": st.session_state.card_title.strip(),
-        "company": st.session_state.card_company.strip(),
-        "description": st.session_state.description,
-        "industry": st.session_state.card_industry.strip(),
-        "goal": st.session_state.card_goal.strip(),
-        "need": st.session_state.card_need.strip(),
-        "users": st.session_state.card_users.strip(),
-        "data": st.session_state.card_data.strip(),
-        "restrictions": st.session_state.card_restrictions.strip(),
-        "deliverables": st.session_state.card_deliverables.strip(),
-        "success_criteria": st.session_state.card_success.strip(),
-        "contact": st.session_state.card_contact.strip(),
-        "interaction_mode": st.session_state.card_interaction.strip(),
-        "skills": st.session_state.card_skills.strip(),
-        "timeline": st.session_state.card_timeline.strip(),
-        "budget": st.session_state.card_budget.strip(),
-    }
+def _card_widget_key(field, prefix="card"):
+    suffix = {"success_criteria": "success", "interaction_mode": "interaction"}.get(field, field)
+    return f"{prefix}_{suffix}"
+
+
+def _card_inputs(prefix="card", card=None):
+    values = {}
+    for field, label, multiline in CARD_INPUTS:
+        widget = st.text_area if multiline else st.text_input
+        options = {"key": _card_widget_key(field, prefix)}
+        if card is not None:
+            options["value"] = card[field]
+        values[field] = widget(label, **options).strip()
+    return values
 
 
 def _save_card(card):
@@ -486,14 +507,10 @@ def page_create():
             questions, source = draft_questions(description.strip())
             st.session_state.questions = questions
             st.session_state.question_source = source
-            for key, value in {
-                "card_title": "", "card_company": "", "card_industry": "",
-                "card_goal": description.strip(), "card_need": "", "card_users": "",
-                "card_data": "", "card_restrictions": "", "card_deliverables": "",
-                "card_success": "", "card_contact": "", "card_interaction": "",
-                "card_skills": "", "card_timeline": "", "card_budget": "",
-            }.items():
-                st.session_state[key] = value
+            for field, _, _ in CARD_INPUTS:
+                st.session_state[_card_widget_key(field)] = description.strip() if field == "goal" else ""
+            for field in QUESTION_FIELDS:
+                st.session_state.pop(f"answer_{field}", None)
             st.session_state.pop("card", None)
 
     if not st.session_state.get("questions"):
@@ -516,7 +533,7 @@ def page_create():
         for item in st.session_state.questions:
             answer = st.session_state.get(f"answer_{item['field']}", "").strip()
             if answer:
-                st.session_state[f"card_{item['field']}"] = answer
+                st.session_state[_card_widget_key(item["field"])] = answer
                 copied += 1
         st.session_state.answer_transfer_notice = f"В карточку перенесено ответов: {copied}. Проверьте и отредактируйте поля ниже."
     if st.session_state.get("answer_transfer_notice"):
@@ -526,24 +543,10 @@ def page_create():
 
     with st.form("card_form"):
         st.subheader("Карточка задачи")
-        st.text_input("Название задачи *", key="card_title")
-        st.text_input("Компания / владелец", key="card_company")
-        st.text_input("Отрасль или тема", key="card_industry")
-        st.text_area("Контекст: что происходит сейчас", key="card_goal")
-        st.text_area("Потребность: что нужно изменить", key="card_need")
-        st.text_area("Для кого создаётся решение", key="card_users")
-        st.text_area("Данные и доступные материалы", key="card_data")
-        st.text_area("Ограничения: сроки, технологии, доступы", key="card_restrictions")
-        st.text_area("Ожидаемый результат", key="card_deliverables")
-        st.text_area("Критерии успеха: как измерить результат", key="card_success")
-        st.text_input("Контакт представителя бизнеса", key="card_contact")
-        st.text_input("Формат взаимодействия и обратной связи", key="card_interaction")
-        st.text_input("Навыки или технологии", key="card_skills")
-        st.text_input("Сроки", key="card_timeline")
-        st.text_input("Бюджет или доступные ресурсы", key="card_budget")
+        values = _card_inputs()
         saved = st.form_submit_button("Подтвердить сведения и пересчитать рейтинг", type="primary")
     if saved:
-        _save_card(_card_values())
+        _save_card({"description": st.session_state.description, **values})
 
     card = st.session_state.get("card")
     if not card:
@@ -593,8 +596,49 @@ def page_create():
             st.success("Задача опубликована. Её рейтинг определяет место в каталоге, а не доступность для студентов.")
 
 
+def page_edit_challenge(challenge_id):
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM challenges WHERE id=? AND status='published'", (challenge_id,),
+        ).fetchone()
+    if row is None:
+        st.session_state.pop("edit_challenge_id", None)
+        st.session_state.catalog_notice = "Задача больше не доступна для редактирования."
+        st.rerun()
+    st.header("Редактирование опубликованной задачи")
+    st.caption(f"Текущий рейтинг: {row['score']}/100 · {readiness_level(row['score'])}")
+    st.info("Представитель бизнеса проверяет сведения и подтверждает изменения. После подтверждения рейтинг и позиция в каталоге обновятся.")
+    with st.form(f"edit_card_{challenge_id}"):
+        card = _card_inputs(prefix=f"edit_{challenge_id}", card=row)
+        confirmed = st.form_submit_button("Подтвердить изменения и обновить рейтинг", type="primary")
+        cancelled = st.form_submit_button("Отменить и вернуться в каталог")
+    if cancelled:
+        st.session_state.pop("edit_challenge_id", None)
+        st.rerun()
+    if confirmed:
+        if not card["title"]:
+            st.error("Укажите название задачи перед сохранением.")
+            return
+        score, _, _, _ = score_card(card)
+        assignments = ", ".join(f"{field}=?" for field, _, _ in CARD_INPUTS)
+        with db() as conn:
+            conn.execute(
+                f"UPDATE challenges SET {assignments}, score=? WHERE id=? AND status='published'",
+                (*[card[field] for field, _, _ in CARD_INPUTS], score, challenge_id),
+            )
+        st.session_state.pop("edit_challenge_id", None)
+        st.session_state.catalog_notice = f"Изменения подтверждены. Рейтинг задачи: {row['score']} → {score}/100. Позиция в каталоге обновлена."
+        st.rerun()
+
+
 def page_catalog():
+    if st.session_state.get("edit_challenge_id"):
+        page_edit_challenge(st.session_state.edit_challenge_id)
+        return
     st.header("Открытый каталог задач")
+    notice = st.session_state.pop("catalog_notice", None)
+    if notice:
+        st.info(notice)
     with db() as conn:
         rows = conn.execute("SELECT * FROM challenges WHERE status='published' ORDER BY score DESC, created_at DESC, id DESC").fetchall()
     if not rows:
@@ -620,8 +664,15 @@ def page_catalog():
                 f"**Ограничения:** {row['restrictions'] or 'Не указаны'}  \n"
                 f"**Ожидаемый результат:** {row['deliverables'] or 'Не указан'}  \n"
                 f"**Критерии успеха:** {row['success_criteria'] or 'Не указаны'}  \n"
+                f"**Контакт представителя бизнеса:** {row['contact'] or 'Не указан'}  \n"
+                f"**Формат взаимодействия и обратной связи:** {row['interaction_mode'] or 'Не указан'}  \n"
                 f"**Навыки:** {row['skills'] or 'Не указаны'}  ·  **Сроки:** {row['timeline'] or 'Не указаны'}"
             )
+            if st.button("Редактировать от имени бизнеса", key=f"edit_challenge_{row['id']}"):
+                for field, _, _ in CARD_INPUTS:
+                    st.session_state.pop(_card_widget_key(field, f"edit_{row['id']}"), None)
+                st.session_state.edit_challenge_id = row["id"]
+                st.rerun()
             if row["score"] < 40:
                 st.warning("Черновик: бизнесу стоит уточнить детали. Команда всё равно может откликнуться.")
             with st.form(f"proposal_{row['id']}"):
@@ -698,6 +749,10 @@ def page_proposals():
 
 def page_teams():
     st.header("Команды и демо-данные")
+    with st.expander("Пять исходных черновиков для демонстрации"):
+        for index, card in enumerate(demo_data(), 1):
+            st.write(f"**{index}. {card['title']}** · {card['industry']}")
+            st.write(card["description"])
     if st.button("Загрузить синтетический набор для демо", type="primary"):
         inserted = seed_demo_data()
         st.success(
