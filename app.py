@@ -7,7 +7,7 @@ from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=not bool(os.getenv("OPENAI_API_KEY")))
 DB_PATH = os.getenv("DATABASE_PATH", "challenge_hub.db")
 
 READINESS_LEVELS = [
@@ -221,9 +221,13 @@ def draft_questions(description):
                     used_fields.add(field)
         if len(questions) >= 3:
             return questions[:5], "AI"
-    except Exception:
-        pass
-    return fallback, "локальный шаблон (AI недоступен или вернул некорректный ответ)"
+    except Exception as exc:
+        status_code = getattr(exc, "status_code", None)
+        diagnostic = type(exc).__name__
+        if status_code:
+            diagnostic += f", HTTP {status_code}"
+        return fallback, f"локальный шаблон (OpenAI недоступен: {diagnostic})"
+    return fallback, "локальный шаблон (AI вернул некорректный ответ)"
 
 
 def record_progress(proposal_id, milestone):
