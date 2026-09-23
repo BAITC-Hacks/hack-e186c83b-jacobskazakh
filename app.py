@@ -141,36 +141,104 @@ def _quality_points(value, weight, **thresholds):
     return 0 if quality == 0 else (weight if quality == 2 else weight // 2)
 
 
-def score_card(card):
-    """Score completeness and basic specificity of confirmed information."""
+def _score_detail(label, value, weight, advice, min_chars=24, min_words=4):
+    text = " ".join(str(value or "").split())
+    quality = _text_quality(text, min_chars=min_chars, min_words=min_words)
+    points = 0 if quality == 0 else (weight if quality == 2 else weight // 2)
+    if not text:
+        reason = "Поле не заполнено."
+    elif quality == 0:
+        reason = "Текст слишком короткий или похож на заглушку."
+    elif quality == 1:
+        reason = "Ответ есть, но базовая проверка не находит достаточно деталей для полного веса."
+    else:
+        reason = "Длина и детализация проходят базовую проверку заполненности."
+    return {"label": label, "points": points, "weight": weight,
+            "reason": reason, "advice": advice}
+
+
+def score_details(card):
+    """Explain points and give a field-specific next step for a confirmed card."""
     c = dict(card)
-    breakdown = []
+    details = [
+        _score_detail("Контекст: что происходит сейчас", c.get("goal"), 10,
+                      "Опишите текущий процесс: кто его выполняет, как часто и где возникает проблема."),
+        _score_detail("Потребность: что нужно изменить", c.get("need"), 10,
+                      "Сформулируйте желаемое изменение или потребность, которую должна закрыть задача."),
+        _score_detail("Данные и материалы", c.get("data"), 20,
+                      "Укажите источник, формат и пример доступных данных; уточните, можно ли передать обезличенную выборку."),
+        _score_detail("Ожидаемый результат", c.get("deliverables"), 15,
+                      "Назовите конкретный результат и его формат: например, прототип, отчёт, модель или план."),
+    ]
 
-    context_score = _quality_points(c.get("goal"), 10) + _quality_points(c.get("need"), 10)
-    breakdown.append(("Контекст и потребность", context_score, 20))
-    breakdown.append(("Данные и материалы", _quality_points(c.get("data"), 20), 20))
-    breakdown.append(("Ожидаемый результат", _quality_points(c.get("deliverables"), 15), 15))
-
-    success = c.get("success_criteria", "")
-    success_points = _quality_points(success, 15)
+    success = _score_detail(
+        "Критерии успеха", c.get("success_criteria"), 15,
+        "Добавьте измеримый показатель и целевое значение, например: сократить время на 15% за месяц.",
+    )
     measurable = bool(re.search(
         r"\d|%|процент|минут|час|дн(?:я|ей)|недел|месяц|не менее|не более|в среднем|доля|количество",
-        str(success), flags=re.IGNORECASE,
+        str(c.get("success_criteria", "")), flags=re.IGNORECASE,
     ))
-    if success_points == 15 and not measurable:
-        success_points = 7
-    breakdown.append(("Критерии успеха", success_points, 15))
-    breakdown.append(("Ограничения", _quality_points(c.get("restrictions"), 10), 10))
-    breakdown.append(("Пользователи", _quality_points(c.get("users"), 10), 10))
+    if measurable:
+        success["advice"] = "Уточните исходный уровень, метод и период измерения этого показателя."
+    if success["points"] == 15 and not measurable:
+        success["points"] = 7
+        success["reason"] = "Описание достаточно подробное, но без измеримого показателя полный вес не начисляется."
+    elif success["points"] == 15:
+        success["reason"] = "Описание достаточно подробное и содержит измеримый показатель."
+    elif success["points"] < 15 and measurable and success["points"] > 0:
+        success["reason"] += " Показатель найден; для полного веса подробнее опишите способ и условия измерения."
+    details.append(success)
 
-    contact = str(c.get("contact", "") or "").strip()
-    contact_points = _quality_points(contact, 5, min_chars=8, min_words=2)
-    if re.search(r"[^\s@]+@[^\s@]+\.[^\s@]+", contact) or len(re.sub(r"\D", "", contact)) >= 7:
-        contact_points = 5
-    interaction_points = _quality_points(c.get("interaction_mode"), 5, min_chars=18, min_words=3)
-    business_score = contact_points + interaction_points
-    breakdown.append(("Связь с бизнесом", business_score, 10))
+    details.append(_score_detail(
+        "Ограничения", c.get("restrictions"), 10,
+        "Уточните сроки, доступы, технологии, бюджет или другие границы работы команды.",
+    ))
+    details.append(_score_detail(
+        "Пользователи", c.get("users"), 10,
+        "Опишите конкретные роли или группы пользователей и их связь с задачей.",
+    ))
 
+    contact = " ".join(str(c.get("contact", "") or "").split())
+    contact_quality = _text_quality(contact, min_chars=8, min_words=2)
+    contact_valid = bool(re.search(r"[^\s@]+@[^\s@]+\.[^\s@]+", contact)
+                         or len(re.sub(r"\D", "", contact)) >= 7)
+    contact_points = 5 if contact_valid else (2 if contact_quality > 0 else 0)
+    if not contact:
+        contact_reason = "Поле не заполнено."
+    elif contact_valid:
+        contact_reason = "Указан email или телефон для связи."
+    elif contact_quality > 0:
+        contact_reason = "Контакт описан, но email или телефон не распознан для надёжной связи."
+    else:
+        contact_reason = "Контакт слишком короткий или похож на заглушку."
+    details.append({
+        "label": "Контакт представителя бизнеса", "points": contact_points, "weight": 5,
+        "reason": contact_reason,
+        "advice": "Добавьте рабочий email или телефон, чтобы команда могла связаться с представителем бизнеса.",
+    })
+    details.append(_score_detail(
+        "Формат взаимодействия", c.get("interaction_mode"), 5,
+        "Укажите канал и регулярность обратной связи, например еженедельный созвон на 30 минут.",
+        min_chars=18, min_words=3,
+    ))
+    return details
+
+
+def score_card(card):
+    """Score completeness and basic specificity of confirmed information."""
+    details = score_details(card)
+    groups = [
+        ("Контекст и потребность", details[0:2], 20),
+        ("Данные и материалы", details[2:3], 20),
+        ("Ожидаемый результат", details[3:4], 15),
+        ("Критерии успеха", details[4:5], 15),
+        ("Ограничения", details[5:6], 10),
+        ("Пользователи", details[6:7], 10),
+        ("Связь с бизнесом", details[7:9], 10),
+    ]
+    breakdown = [(label, sum(item["points"] for item in fields), weight)
+                 for label, fields, weight in groups]
     score = sum(points for _, points, _ in breakdown)
     missing = [label for label, points, possible in breakdown if points < possible]
     return score, readiness_level(score), missing, breakdown
@@ -395,6 +463,7 @@ def _save_card(card):
     st.session_state.card_level = level
     st.session_state.card_missing = missing
     st.session_state.card_breakdown = breakdown
+    st.session_state.card_score_details = score_details(card)
 
 
 def page_create():
@@ -480,11 +549,22 @@ def page_create():
     if not card:
         st.info("Заполните карточку и подтвердите сведения, чтобы увидеть рейтинг.")
         return
+    if "card_score_details" not in st.session_state:
+        st.session_state.card_score_details = score_details(card)
     score = st.session_state.card_score
     st.subheader("Предпросмотр и рейтинг")
     st.metric("Качество задачи", f"{score}/100", st.session_state.card_level)
     for label, points, possible in st.session_state.card_breakdown:
         st.write(f"{'✅' if points == possible else '➕'} **{label}: {points}/{possible}**")
+    st.subheader("Почему начислены баллы")
+    for item in st.session_state.card_score_details:
+        with st.expander(f"{item['label']} · {item['points']}/{item['weight']}",
+                         expanded=item["points"] < item["weight"]):
+            if item["points"] < item["weight"]:
+                st.caption(item["reason"])
+                st.write(f"**Как повысить:** {item['advice']}")
+            else:
+                st.write(f"**Зачтено:** {item['reason']}")
     if st.session_state.card_missing:
         st.info("Чтобы повысить рейтинг, уточните: " + ", ".join(st.session_state.card_missing))
     st.write(f"**{card['title'] or 'Без названия'}** · {card['company'] or 'Компания не указана'}")
@@ -508,7 +588,7 @@ def page_create():
                     card["interaction_mode"],
                 ))
             for key in list(st.session_state):
-                if key in {"card", "card_score", "card_level", "card_missing", "card_breakdown", "questions", "question_source", "description"}:
+                if key in {"card", "card_score", "card_level", "card_missing", "card_breakdown", "card_score_details", "questions", "question_source", "description"}:
                     del st.session_state[key]
             st.success("Задача опубликована. Её рейтинг определяет место в каталоге, а не доступность для студентов.")
 
